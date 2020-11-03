@@ -105,7 +105,7 @@ def btn_sample(channel):
     get_time_thread()
 
 def btn_startstop(channel):
-    print("Liam is a boitjie")
+    print("(´・ω・｀) Sss..ssseenpai!!!")
 
 def welcome():
     os.system('clear')
@@ -117,6 +117,51 @@ def welcome():
     print(" |______|_| |_|\_/ |_|_|  \___/|_| |_|_| |_| |_|\___|_| |_|\__| |______\___/ \__, |\__, |\___|_|   ")
     print("                                                                              __/ | __/ |          ")
     print("                                                                             |___/ |___/           ")
+
+# Load temp
+def fetch_temp():
+    # get however many temp there are
+    temp_count = eeprom.read_byte(0)
+    tempscores=eeprom.read_block(1,temp_count*4)
+    # Get the temperatures and time
+    temperature=[]
+    for number in range(temp_count):
+        temp=[]
+        temp.append(tempscores.pop(0)) #hour
+        temp.append(tempscores.pop(0)) #minute
+        temp.append(tempscores.pop(0)) #second
+        temp.append(tempscores.pop(0)) # temperature
+        scores.append(temp)
+    
+
+    # return back the results
+    return temp_count, temperature #temperature=[  [hour,minute,second,temp]  ,   [hour,minute,second,temp]   ,   [hour,minute,second,temp] ]
+
+def write_temp(t_count,temp_readings):
+    eeprom.clear(4096)
+    eeprom.write_block(0, [t_count])
+    data_to_write = []
+    for reading in temp_readings:  #temp_readings in format[ [ [hour,minute,second] , [temp] ]   ,   [ [hour,minute,second] , [temp] ]   ,   [ [hour,minute,second] , [temp] ] ]
+        data_to_write.append(reading[0][0]) #hour
+        data_to_write.append(reading[0][1]) #minute
+        data_to_write.append(reading[0][2]) #second 
+        data_to_write.append(reading[1]) #temperature
+    eeprom.write_block(1, data_to_write)
+
+# Save temperature
+def save_temp(time,temperature):
+    # fetch temp            time is an array [hour,minute,second]
+    t_count, temp_time=fetch_temp()
+    if (t_count==20):
+        temp_time.pop(0)
+        temp_time.append([time,temperature])
+    else:
+        t_count=t_count+1
+        temp_time.append([time,temperature])
+    write_scores(t_count,temp_time)
+
+#def convert to time format [hour,minute,second]
+
 
 if __name__ == "__main__": #If run as the main script, run main()
     try:
