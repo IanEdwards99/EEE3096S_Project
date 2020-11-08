@@ -105,7 +105,7 @@ def btn_sample(channel):
     get_time_thread()
 
 def btn_startstop(channel):
-    print("(´・ω・｀) Sss..ssseenpai!!!")
+    print("(´・ω・｀) Sss..ssseenpai!!!")#?
 
 def welcome():
     os.system('clear')
@@ -133,7 +133,6 @@ def fetch_temp():
         temp.append(tempscores.pop(0)) # temperature
         scores.append(temp)
     
-
     # return back the results
     return temp_count, temperature #temperature=[  [hour,minute,second,temp]  ,   [hour,minute,second,temp]   ,   [hour,minute,second,temp] ]
 
