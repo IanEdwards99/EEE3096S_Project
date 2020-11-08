@@ -31,6 +31,7 @@ runtime = 0
 option = 1
 start = 0
 thread = None
+sampleNr = 0
 #=======================================================================
 #Some global variables that need to change as we run the program
 k=None              #instance of pwm object for buzzer 
@@ -68,8 +69,8 @@ def setup():
     # Setup PWM channels
     global k
     GPIO.setup(buzzer,GPIO.OUT)
-    k=GPIO.PWM(buzzer,1000)
-    k.start(0)
+    #k=GPIO.PWM(buzzer,1000)
+    #k.start(0)
     # Setup debouncing and callbacks
     GPIO.add_event_detect(button_stop_start,GPIO.FALLING,callback=btn_startstop,bouncetime=300)
 
@@ -92,10 +93,13 @@ def ADCToCelcius(ADCcode):
 
 #Function to read channel value from ADC and print to screen.
 def read(chan, runtime):
+    global sampleNr += 1
     val = chan.value
-    print(runtime, "\t\t", chan.value, '\t\t', str(round(ADCToCelcius(val),3)) + "\tC", sep = '')
-
-
+    temp = round(ADCToCelcius(val),3)
+    save_temp(datetime.datetime.now().time(), temp)
+    print(round(datetime.datetime.now().time(), 2), "\t\t", runtime, '\t\t', str(temp) + "\tC", sep = '')
+    if (sampleNr % 5 == 0):_
+        GPIO.output(buzzer, HIGH)
 
 def btn_startstop(channel):
     print("(´・ω・｀) Sss..ssseenpai!!!")#?
@@ -150,7 +154,7 @@ def save_temp(time,temperature):
     else:
         t_count=t_count+1
         temp_time.append([time,temperature])
-    write_scores(t_count,temp_time)
+    write_temp(t_count,temp_time)
 
 #def convert to time format [hour,minute,second]
 
