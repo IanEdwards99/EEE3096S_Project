@@ -32,6 +32,7 @@ option = 1
 start = 0
 thread = None
 sampleNr = 0
+start_stop=None
 #=======================================================================
 #Some global variables that need to change as we run the program
 k=None              #instance of pwm object for buzzer 
@@ -39,9 +40,10 @@ eeprom = ES2EEPROMUtils.ES2EEPROM()
 #=======================================================================
 #Main method run on startup.
 def main():
-    global chan #global variables used in the function
-    chan = setup()
-    get_time_thread() #Start timer and reading function
+    global chan,start_stop; #global variables used in the function
+    chan = setup();
+    start_stop=1;
+    get_time_thread(); #Start timer and reading function
 
 #Function to setup GPIO, SPI connection and ADC.
 def setup():
@@ -55,22 +57,21 @@ def setup():
     cs = digitalio.DigitalInOut(board.D5)
 
     # create the mcp object
-    mcp = MCP.MCP3008(spi, cs)
+    mcp = MCP.MCP3008(spi, cs);
     # create an analog input channel on pin 0
-    chan = AnalogIn(mcp, MCP.P0)
+    chan = AnalogIn(mcp, MCP.P0);
     # Setup Button
-    GPIO.setup(button_stop_start,GPIO.IN,pull_up_down=GPIO.PUD_UP)
+    GPIO.setup(button_stop_start,GPIO.IN,pull_up_down=GPIO.PUD_UP);
     # Setup debouncing and callbacks
-    GPIO.add_event_detect(button1,GPIO.FALLING,callback=btn_sample,bouncetime=300)
-    print("Runtime\t\tTemp Reading\tTemp")
-    start=time.time()
+    GPIO.add_event_detect(button1,GPIO.FALLING,callback=btn_sample,bouncetime=300);
+    print("Runtime\t\tTemp Reading\tTemp");
+    start=time.time();
 
     #EEPROM setup
     # Setup PWM channels
     global k
-    GPIO.setup(buzzer,GPIO.OUT)
-    #k=GPIO.PWM(buzzer,1000)
-    #k.start(0)
+    k=GPIO.PWM(buzzer,1000)
+    k.start(0)
     # Setup debouncing and callbacks
     GPIO.add_event_detect(button_stop_start,GPIO.FALLING,callback=btn_startstop,bouncetime=300)
 
@@ -93,16 +94,33 @@ def ADCToCelcius(ADCcode):
 
 #Function to read channel value from ADC and print to screen.
 def read(chan, runtime):
-    global sampleNr += 1
+    global sampleNr, start_stop;
     val = chan.value
     temp = round(ADCToCelcius(val),3)
-    save_temp(datetime.datetime.now().time(), temp)
-    print(round(datetime.datetime.now().time(), 2), "\t\t", runtime, '\t\t', str(temp) + "\tC", sep = '')
-    if (sampleNr % 5 == 0):_
-        GPIO.output(buzzer, HIGH)
+    if(start_stop==1):
+        save_temp(datetime.datetime.now().time(), temp)
+        print(round(datetime.datetime.now().time(), 2), "\t\t", runtime, '\t\t', str(temp) + "\tC", sep = '')
+        sampleNr += 1
+        if (sampleNr % 5 == 0):
+            trigger_buzzer(1)
+        else:
+            trigger_buzzer(0)
+    else:
+        sampleNr=0;
+
 
 def btn_startstop(channel):
-    print("(´・ω・｀) Sss..ssseenpai!!!")#?
+    global start_stop;
+    if (start_stop==1):
+        start_stop=0;
+        os.system('clear')
+        print("Logging has stopped ");
+        print("Press Buzzer to start logging again");
+    else:
+        os.system('clear')
+        print("Logging has started");
+        print("Runtime\t\tTemp Reading\tTemp");
+        start_stop=1;
 
 def welcome():
     os.system('clear')
@@ -156,7 +174,7 @@ def save_temp(time,temperature):
         temp_time.append([time,temperature])
     write_temp(t_count,temp_time)
 
-#def convert to time format [hour,minute,second]
+
 
 #turn buzzer on
 def trigger_buzzer(boolean):
@@ -170,6 +188,7 @@ def trigger_buzzer(boolean):
 
 if __name__ == "__main__": #If run as the main script, run main()
     try:
+        welcome()
         main()
     except KeyboardInterrupt:
         GPIO.cleanup() #Cleanup GPIO initializations on exit.
