@@ -10,6 +10,7 @@ import datetime
 import time
 import RPi.GPIO as GPIO
 import random
+import os
 
 #Declare constants
 #=======================================================================
@@ -27,7 +28,7 @@ buzzer = 13
 #Static global variables to be used by thread and other functions for temperature sensor and ADC
 chan = None
 runtime = 0
-option = 0
+option = 1
 start = 0
 thread = None
 #=======================================================================
@@ -56,8 +57,7 @@ def setup():
     mcp = MCP.MCP3008(spi, cs)
     # create an analog input channel on pin 0
     chan = AnalogIn(mcp, MCP.P0)
-    # Setup Buttons
-    GPIO.setup(btn_sample_rate,GPIO.IN,pull_up_down=GPIO.PUD_UP)
+    # Setup Button
     GPIO.setup(button_stop_start,GPIO.IN,pull_up_down=GPIO.PUD_UP)
     # Setup debouncing and callbacks
     GPIO.add_event_detect(button1,GPIO.FALLING,callback=btn_sample,bouncetime=300)
@@ -69,7 +69,7 @@ def setup():
     global k
     GPIO.setup(buzzer,GPIO.OUT)
     k=GPIO.PWM(buzzer,1000)
-   # k.start(0)
+    k.start(0)
     # Setup debouncing and callbacks
     GPIO.add_event_detect(button_stop_start,GPIO.FALLING,callback=btn_startstop,bouncetime=300)
 
@@ -95,14 +95,7 @@ def read(chan, runtime):
     val = chan.value
     print(runtime, "\t\t", chan.value, '\t\t', str(round(ADCToCelcius(val),3)) + "\tC", sep = '')
 
-#Function to handle GPIO button1 press events
-def btn_sample(channel):
-    global option, thread
-    thread.cancel()
-    option += 1
-    if option > 2: #timestep has 3 options from 0 to 2.
-        option = 0
-    get_time_thread()
+
 
 def btn_startstop(channel):
     print("(´・ω・｀) Sss..ssseenpai!!!")#?
@@ -160,6 +153,15 @@ def save_temp(time,temperature):
     write_scores(t_count,temp_time)
 
 #def convert to time format [hour,minute,second]
+
+#turn buzzer on
+def trigger_buzzer(boolean):
+    if(boolean==1):
+        k.ChangeDutyCycle(0.5)
+        k.ChangeFrequency(1)
+    else:
+        k.ChangeDutyCycle(0)
+    
 
 
 if __name__ == "__main__": #If run as the main script, run main()
