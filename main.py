@@ -19,8 +19,8 @@ nbits = 16
 Vref = 3.3 #Volts
 Tc = 10 #mV/C
 T0 = 500 #mV
-button_sample_rate = 6 #Button GPIO port (BCM)
-button_stop_start = 26 #GPIO 26
+#button_sample_rate = 6 #Button GPIO port (BCM)
+button_stop_start = 6 #GPIO 26
 timestep = [10,5,1] #Array of timestep options (static)
 #Pins for EEPROM
 buzzer = 13
@@ -44,11 +44,13 @@ def main():
     chan = setup();
     start_stop=1;
     get_time_thread(); #Start timer and reading function
+    while True: #loop infinitely so thread can run and print ADC values to display. Note: timer does printing so ADC is only read and printed to display each timestep.
+        pass
 
 #Function to setup GPIO, SPI connection and ADC.
 def setup():
     #ADC and Temp sensor setup
-    global start
+    global start, chan
     GPIO.setmode(GPIO.BCM)
     # create the spi bus
     spi = busio.SPI(clock=board.SCK, MISO=board.MISO, MOSI=board.MOSI)
@@ -63,18 +65,18 @@ def setup():
     # Setup Button
     GPIO.setup(button_stop_start,GPIO.IN,pull_up_down=GPIO.PUD_UP);
     # Setup debouncing and callbacks
-    GPIO.add_event_detect(button1,GPIO.FALLING,callback=btn_sample,bouncetime=300);
-    print("Runtime\t\tTemp Reading\tTemp");
+   # GPIO.add_event_detect(button_stop_start,GPIO.FALLING,callback=btn_startstop,bouncetime=300);
+    print("Runtime\t\tTime\t\tTemp Reading");
     start=time.time();
 
     #EEPROM setup
     # Setup PWM channels
     global k
+    GPIO.setup(buzzer, GPIO.OUT)
     k=GPIO.PWM(buzzer,1000)
     k.start(0)
     # Setup debouncing and callbacks
     GPIO.add_event_detect(button_stop_start,GPIO.FALLING,callback=btn_startstop,bouncetime=300)
-
     return chan #object of analog input channel for ADC returned.
 
 #function to start the thread timer, enable thread daemon, start the thread and then call the function to read the ADC value. This function will iterate every second and check the time elapsed with the chosen timestep. Inititally 10 seconds.
@@ -83,7 +85,7 @@ def get_time_thread():
     runtime = time.time() - start;
     runtime=round(runtime) #Calculate runtime
     thread = threading.Timer(timestep[option], get_time_thread)
-    thread.daemon = True #Clean up and close threads on program exit.
+    thread.daemon = True; #Clean up and close threads on program exit.
     thread.start() #start thread
     read(chan, runtime)
 
@@ -95,32 +97,42 @@ def ADCToCelcius(ADCcode):
 #Function to read channel value from ADC and print to screen.
 def read(chan, runtime):
     global sampleNr, start_stop;
-    val = chan.value
+    val = chan.value 
     temp = round(ADCToCelcius(val),3)
     if(start_stop==1):
-        save_temp(datetime.datetime.now().time(), temp)
-        print(round(datetime.datetime.now().time(), 2), "\t\t", runtime, '\t\t', str(temp) + "\tC", sep = '')
-        sampleNr += 1
+        currentTime = datetime.datetime.now().time()
+        timeArr = [currentTime.hour, currentTime.minute, currentTime.second]
+        save_temp(timeArr, temp)
+        if (start_stop==1):
+            print(timeArr[0],":", timeArr[1],":", timeArr[2], "\t\t", runtime, '\t\t', str(temp) + " C", sep = '')
+            sampleNr += 1
         if (sampleNr % 5 == 0):
             trigger_buzzer(1)
+            #GPIO.output(buzzer, 1)
         else:
+            #GPIO.output(buzzer, 1)
             trigger_buzzer(0)
     else:
         sampleNr=0;
 
 
 def btn_startstop(channel):
-    global start_stop;
+    global start_stop, thread, sampleNr, runtime;
     if (start_stop==1):
         start_stop=0;
+        thread.cancel()
+        runtime = 0;
+        sampleNr = 0;
+        trigger_buzzer(0);
         os.system('clear')
         print("Logging has stopped ");
         print("Press Buzzer to start logging again");
     else:
         os.system('clear')
         print("Logging has started");
-        print("Runtime\t\tTemp Reading\tTemp");
+        print("Runtime\t\tTime\t\tTemp");
         start_stop=1;
+        get_time_thread()
 
 def welcome():
     os.system('clear')
@@ -142,14 +154,16 @@ def fetch_temp():
     temperature=[]
     for number in range(temp_count):
         temp=[]
-        temp.append(tempscores.pop(0)) #hour
-        temp.append(tempscores.pop(0)) #minute
-        temp.append(tempscores.pop(0)) #second
+        temptime=[]
+        temptime.append(tempscores.pop(0)) #hour
+        temptime.append(tempscores.pop(0)) #minute
+        temptime.append(tempscores.pop(0)) #second
+        temp.append(temptime)
         temp.append(tempscores.pop(0)) # temperature
-        scores.append(temp)
+        temperature.append(temp)
     
     # return back the results
-    return temp_count, temperature #temperature=[  [hour,minute,second,temp]  ,   [hour,minute,second,temp]   ,   [hour,minute,second,temp] ]
+    return temp_count, temperature #temperature=[  [hour,minute,second],temp]  ,   [hour,minute,second],temp]   ,   [hour,minute,second],temp] ]
 
 def write_temp(t_count,temp_readings):
     eeprom.clear(4096)
@@ -159,7 +173,7 @@ def write_temp(t_count,temp_readings):
         data_to_write.append(reading[0][0]) #hour
         data_to_write.append(reading[0][1]) #minute
         data_to_write.append(reading[0][2]) #second 
-        data_to_write.append(reading[1]) #temperature
+        data_to_write.append(int(reading[1])) #temperature
     eeprom.write_block(1, data_to_write)
 
 # Save temperature
@@ -172,6 +186,7 @@ def save_temp(time,temperature):
     else:
         t_count=t_count+1
         temp_time.append([time,temperature])
+        
     write_temp(t_count,temp_time)
 
 
