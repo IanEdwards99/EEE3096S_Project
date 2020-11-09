@@ -9,7 +9,6 @@ from threading import Thread
 import datetime
 import time
 import RPi.GPIO as GPIO
-import random
 import os
 
 #Declare constants
@@ -21,7 +20,7 @@ Tc = 10 #mV/C
 T0 = 500 #mV
 #button_sample_rate = 6 #Button GPIO port (BCM)
 button_stop_start = 6 #GPIO 26
-timestep = [10,5,1] #Array of timestep options (static)
+timestep = [10,4,1] #Array of timestep options (static)
 #Pins for EEPROM
 buzzer = 13
 #=======================================================================
@@ -41,12 +40,11 @@ eeprom = ES2EEPROMUtils.ES2EEPROM()
 #Main method run on startup.
 def main():
     global chan, thread; #global variables used in the function
-    # chan = setup();
-    # get_time_thread(); #Start timer and reading function
-    # while True:
-    #     pass
-    eeprom.clear(4096)
-    
+    chan = setup();
+    get_time_thread(); #Start timer and reading function
+    while True:
+        pass
+
 
 #Function to setup GPIO, SPI connection and ADC.
 def setup():
@@ -67,6 +65,7 @@ def setup():
    # GPIO.add_event_detect(button_stop_start,GPIO.FALLING,callback=btn_startstop,bouncetime=300);
     start=time.time();
     start_stop=1;
+    print("Time:\t\t\tRuntime\t\tTemperature:")
     #EEPROM setup
     # Setup PWM channels
     global k
@@ -127,7 +126,6 @@ def btn_startstop(channel):#Stops/Starts sensor monitoring, but thread is unaffe
         trigger_buzzer(0);
         welcome()
         print("Logging has stopped. Press Buzzer to start logging again.");
-        print();
         trigger_buzzer(0);
     else:
         sampleNr = 0;
@@ -209,8 +207,9 @@ if __name__ == "__main__": #If run as the main script, run main()
     try:
         welcome()
         main()
-    except KeyboardInterrupt:
+    except KeyboardInterrupt as e:
         GPIO.cleanup() #Cleanup GPIO initializations on exit.
+        print(e)
     except Exception as e:
         print(e)
         GPIO.cleanup()
