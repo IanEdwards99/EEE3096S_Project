@@ -1,3 +1,8 @@
+#=======================================================================
+#...............EEE3096S Environment Logger Project....................=
+#....................Ian Edwards and Liam McEvoy.......................=
+#.....................EDWIAN004 and MCVLIA001..........................=
+#=======================================================================
 import busio
 import digitalio
 import board
@@ -20,7 +25,7 @@ Tc = 10 #mV/C
 T0 = 500 #mV
 #button_sample_rate = 6 #Button GPIO port (BCM)
 button_stop_start = 6 #GPIO 26
-timestep = [10,4,1] #Array of timestep options (static)
+timestep = [10,5,1] #Array of timestep options (static)
 #Pins for EEPROM
 buzzer = 13
 #=======================================================================
@@ -40,16 +45,16 @@ eeprom = ES2EEPROMUtils.ES2EEPROM()
 #Main method run on startup.
 def main():
     global chan, thread; #global variables used in the function
-    chan = setup();
-    get_time_thread(); #Start timer and reading function
-    while True:
+    chan = setup(); # Call setup function to setup ADC, and constants.
+    log_temps() #Start timer and reading function
+    while True: # Loop infinitely allowing for continuous logging.
         pass
 
 
 #Function to setup GPIO, SPI connection and ADC.
 def setup():
     #ADC and Temp sensor setup
-    global chan, start, start_stop
+    global chan, start, start_stop, k
     GPIO.setmode(GPIO.BCM)
     # create the spi bus
     spi = busio.SPI(clock=board.SCK, MISO=board.MISO, MOSI=board.MOSI)
@@ -68,7 +73,6 @@ def setup():
     print("Time:\t\t\tRuntime\t\tTemperature:")
     #EEPROM setup
     # Setup PWM channels
-    global k
     GPIO.setup(buzzer, GPIO.OUT)
     k=GPIO.PWM(buzzer,1000)
     k.start(0)
@@ -76,68 +80,101 @@ def setup():
     GPIO.add_event_detect(button_stop_start,GPIO.FALLING,callback=btn_startstop,bouncetime=300)
     return chan #object of analog input channel for ADC returned.
 
-#function to start the thread timer, enable thread daemon, start the thread and then call the function to read the ADC value. This function will iterate every second and check the time elapsed with the chosen timestep. Inititally 10 seconds.
-def get_time_thread():
-    global chan, option, timestep, start, runtime, thread; #global variables used in function
-    runtime = time.time() - start;
-    runtime=round(runtime) #Calculate runtime
-    thread = threading.Timer(timestep[option], get_time_thread)
-    thread.daemon = True; #Clean up and close threads on program exit.
-    thread.start() #start thread
-    if (start_stop == 1):
-        read(chan, runtime)
-    else:
-        sampleNr = 0;
-        trigger_buzzer(0)
-
 #Function to convert an ADC digital output code to its celcius value.
 def ADCToCelcius(ADCcode):
     temp = (((ADCcode * Vref * 1000) / 2**nbits) - T0)/Tc
     return temp
 
 #Function to read channel value from ADC and print to screen.
-def read(chan, runtime):
-    global sampleNr, start_stop;
+def read(chan):
+    global sampleNr, start_stop, start; #global variables used in function
     if(start_stop==1):
+        #Get ADC value for temperature
         val = chan.value 
         temp = int(ADCToCelcius(val))
-        currentTime = datetime.datetime.now().time()
-        timeArr = [int(currentTime.hour), int(currentTime.minute), int(currentTime.second)]
-        save_temp(timeArr, temp)
-        if timeArr[2] < 10: #Format 1 to 01.
-            timeArr[2] = "0"+str(timeArr[2])
-        print(timeArr[0],":", timeArr[1],":", timeArr[2], "\t\t", runtime, '\t\t', str(temp) + " C", sep = '')
+        currTime = datetime.datetime.now().time()
+        pTime = format_time(currTime) #Format time for printing.
+        store_temps(temp, currTime) #Call method to store temperature and time value in EEPROM.
+        runtime = int(time.time() - start)
+        print(pTime, "\t\t", runtime, '\t\t', str(temp) + " C", sep = '')
         
         sampleNr += 1
-        if (sampleNr % 5 == 0 and start_stop ==1):
+        if (sampleNr % 5 == 0 and start_stop ==1): # If it has been 5 samples, trigger the buzzer only if the button has not been toggled.
             trigger_buzzer(1)
         else:
             trigger_buzzer(0)
     else:
         sampleNr=0;
 
+def retrieve_temps(): # Function reads values from EEPROM.
+    readings_count = eeprom.read_byte(0) # Number of samples stored is stored in first byte.
+    temp_readings = []
+    for i in range(1, readings_count+1):
+        temp_readings.append(eeprom.read_block(i,4)) # Read 4 bytes from EEPROM and append as a list to a list.
+    return readings_count, temp_readings # Return a list
+
+def store_temps(temp, currTime):
+    #Read EEPROM
+    t_count, t_readings = retrieve_temps()
+    # If 20 samples are stored, delete oldest sample (first stored), else increase number of values stored.
+    if t_count < 20:
+        t_count += 1
+    elif t_count >=20:
+        del t_readings[0]
+    t_readings.append([currTime.hour, currTime.minute, currTime.second, temp]) #Array of format [[hour,min,sec,temp],[etc],[],[]]
+    data_to_write = [t_count,0,0,0] #Add initial block for storing number of values in EEPROM.
+    for reading in t_readings:
+        for k in range(0,4):
+            data_to_write.append(reading[k]) #Add hour,min,second and temp to array to be written, per entry in t_readings: [NrEntries,0,0,0,hour,min,second,temp,hour,min,second,temp, etc]
+    eeprom.write_block(0, data_to_write) #Write array to EEPROM
+
+def print_temps(): #Function to retrieve and print first 20 contents of EEPROM.
+    samples = get_data()
+    print("Number of samples stored: ", samples[0])
+    print("Samples:\n", samples[1])
+    
+#Function to start the thread timer, enable thread daemon, start the thread and then call the function to read the ADC value. 
+#This function will iterate every 5 seconds and call read all as a separate thread from the main thread that loops infinitely.
+def log_temps():
+    global chan #global variables used in function
+    thread_data = threading.Timer(timestep[1], log_temps) # Length of timer can be changed.
+    thread_data.daemon = True #Clean up and close threads on program exit.
+    thread_data.start() #start thread
+    read(chan) #read ADC and store to EEPROM.
+
+def format_time(currTime): #Format time for printing.
+    if currTime.second < 10:
+        seconds = "0" + str(currTime.second) #Formatting to align in columns
+    else: seconds = str(currTime.second)
+
+    if currTime.hour < 10:
+        hours = "0" + str(currTime.hour) #Formatting to align in columns
+    else: hours = str(currTime.hour)
+
+    if currTime.minute < 10:
+        minutes = "0" + str(currTime.minute) #Formatting to align in columns
+    else: minutes = str(currTime.minute)
+
+    return hours + ":" + minutes + ":" + seconds
 
 def btn_startstop(channel):#Stops/Starts sensor monitoring, but thread is unaffected.
-    global start_stop, thread, sampleNr, runtime;
+    global start_stop, thread, sampleNr, runtime, start;
     if (start_stop==1):
-        start_stop=0;
-        runtime = 0;
-        sampleNr = 0;
-        trigger_buzzer(0);
-        welcome()
+        start_stop=0; #Toggle start_stop condition. (Stop)
+        sampleNr = 0; #Reset sampleNr so buzzer will buzz in next 5 samples time.
+        trigger_buzzer(0); #Turn off buzzer.
+        welcome() #Redisplay (clear screen)
         print("Logging has stopped. Press Buzzer to start logging again.");
-        trigger_buzzer(0);
-    else:
+    else: #Press again to start again.
         sampleNr = 0;
-        runtime = 0;
         trigger_buzzer(0);
         welcome()
         print("Logging has started.");
-        print("Runtime\t\t\tTime\t\tTemp");
+        print("Time:\t\t\tRuntime\t\tTemperature:")
         start_stop=1;
-        trigger_buzzer(0);
+        start = time.time(); #Read() has runtime = time.time() - start
 
-def welcome():
+def welcome(): # Extra fun ASICC graphic welcome message.
     os.system('clear')
     print("  ______            _                                      _     _                                ")
     print(" |  ____|          (_)                                    | |   | |                               ")
@@ -148,61 +185,14 @@ def welcome():
     print("                                                                              __/ | __/ |          ")
     print("                                                                             |___/ |___/           ")
 
-# Load temp
-def fetch_temp():
-    # get however many temp there are
-    temp_count = eeprom.read_byte(0)
-    tempscores=eeprom.read_block(1,temp_count*4)
-    # Get the temperatures and time
-    temperature=[]
-    for number in range(temp_count):
-        temp=[]
-        temptime=[]
-        temptime.append(tempscores.pop(0)) #hour
-        temptime.append(tempscores.pop(0)) #minute
-        temptime.append(tempscores.pop(0)) #second
-        temp.append(temptime)
-        temp.append(tempscores.pop(0)) # temperature
-        temperature.append(temp)
-    
-    # return back the results
-    return temp_count, temperature #temperature=[  [hour,minute,second],temp]  ,   [hour,minute,second],temp]   ,   [hour,minute,second],temp] ]
-
-def write_temp(t_count,temp_readings):
-    eeprom.clear(4096)
-    eeprom.write_block(0, [t_count])
-    data_to_write = []
-    for reading in temp_readings:  #temp_readings in format[ [ [hour,minute,second] , [temp] ]   ,   [ [hour,minute,second] , [temp] ]   ,   [ [hour,minute,second] , [temp] ] ]
-        data_to_write.append(reading[0][0]) #hour
-        data_to_write.append(reading[0][1]) #minute
-        data_to_write.append(reading[0][2]) #second 
-        data_to_write.append(reading[1]) #temperature
-    eeprom.write_block(1, data_to_write) #(hour, minute, second, temp, hour, minute, second ,temp)
-
-# Save temperature
-def save_temp(time,temperature):
-    # fetch temp            time is an array [hour,minute,second]
-    t_count, temp_time = fetch_temp()
-    print(temp_time)
-    if (t_count==20):
-        temp_time.pop(0)
-        temp_time.append([time,temperature])
-    else:
-        t_count+=1
-        temp_time.append([time,temperature])
-        
-    write_temp(t_count,temp_time)
-
 #turn buzzer on
 def trigger_buzzer(boolean):
     if(boolean==1):
         k.ChangeDutyCycle(0.5)
         k.ChangeFrequency(1)
     else:
-        k.ChangeDutyCycle(0)
+        k.ChangeDutyCycle(0) #turns buzzer off
     
-
-
 if __name__ == "__main__": #If run as the main script, run main()
     try:
         welcome()
