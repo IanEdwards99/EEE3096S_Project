@@ -40,12 +40,27 @@ eeprom = ES2EEPROMUtils.ES2EEPROM()
 #=======================================================================
 #Main method run on startup.
 def main():
-    global chan,start_stop; #global variables used in the function
+    global chan,start_stop, thread; #global variables used in the function
     chan = setup();
-    start_stop=1;
-    get_time_thread(); #Start timer and reading function
-    while True: #loop infinitely so thread can run and print ADC values to display. Note: timer does printing so ADC is only read and printed to display each timestep.
-        pass
+    while True:
+        print("1) Start environment monitoring.\n2) View EEPROM.")
+        option = input("Choose an option from above:\n")
+        if option == "1":
+            print("Runtime\t\t\tTime\t\tTemp Reading");
+            start_stop=1;
+            get_time_thread(); #Start timer and reading function
+            try:
+                while True: #loop infinitely so thread can run and print ADC values to display. Note: timer does printing so ADC is only read and printed to display each timestep.
+                    pass
+            except KeyboardInterrupt:
+                print("Monitoring stopped.")
+                thread.cancel()
+                start_stop = 0;
+                trigger_buzzer(0)
+
+        elif option == "2":
+            arrResult = fetch_temp()
+            print(arrResult[1])
 
 #Function to setup GPIO, SPI connection and ADC.
 def setup():
@@ -66,7 +81,6 @@ def setup():
     GPIO.setup(button_stop_start,GPIO.IN,pull_up_down=GPIO.PUD_UP);
     # Setup debouncing and callbacks
    # GPIO.add_event_detect(button_stop_start,GPIO.FALLING,callback=btn_startstop,bouncetime=300);
-    print("Runtime\t\tTime\t\tTemp Reading");
     start=time.time();
 
     #EEPROM setup
@@ -87,7 +101,11 @@ def get_time_thread():
     thread = threading.Timer(timestep[option], get_time_thread)
     thread.daemon = True; #Clean up and close threads on program exit.
     thread.start() #start thread
-    read(chan, runtime)
+    if (start_stop == 1):
+        read(chan, runtime)
+    else:
+        sampleNr = 0;
+        trigger_buzzer(0)
 
 #Function to convert an ADC digital output code to its celcius value.
 def ADCToCelcius(ADCcode):
@@ -103,36 +121,40 @@ def read(chan, runtime):
         currentTime = datetime.datetime.now().time()
         timeArr = [currentTime.hour, currentTime.minute, currentTime.second]
         save_temp(timeArr, temp)
+        if timeArr[2] < 10: #Format 1 to 01.
+            timeArr[2] = "0"+str(timeArr[2])
+        
         if (start_stop==1):
             print(timeArr[0],":", timeArr[1],":", timeArr[2], "\t\t", runtime, '\t\t', str(temp) + " C", sep = '')
             sampleNr += 1
         if (sampleNr % 5 == 0):
             trigger_buzzer(1)
-            #GPIO.output(buzzer, 1)
         else:
-            #GPIO.output(buzzer, 1)
             trigger_buzzer(0)
     else:
         sampleNr=0;
 
 
-def btn_startstop(channel):
+def btn_startstop(channel):#Stops/Starts sensor monitoring, but thread is unaffected.
     global start_stop, thread, sampleNr, runtime;
     if (start_stop==1):
         start_stop=0;
-        thread.cancel()
         runtime = 0;
         sampleNr = 0;
         trigger_buzzer(0);
-        os.system('clear')
-        print("Logging has stopped ");
-        print("Press Buzzer to start logging again");
+        welcome()
+        print("Logging has stopped. Press Buzzer to start logging again.");
+        print();
+        trigger_buzzer(0);
     else:
-        os.system('clear')
-        print("Logging has started");
-        print("Runtime\t\tTime\t\tTemp");
+        sampleNr = 0;
+        runtime = 0;
+        trigger_buzzer(0);
+        welcome()
+        print("Logging has started.");
+        print("Runtime\t\t\tTime\t\tTemp");
         start_stop=1;
-        get_time_thread()
+        trigger_buzzer(0);
 
 def welcome():
     os.system('clear')
@@ -149,6 +171,7 @@ def welcome():
 def fetch_temp():
     # get however many temp there are
     temp_count = eeprom.read_byte(0)
+    print(temp_count)
     tempscores=eeprom.read_block(1,temp_count*4)
     # Get the temperatures and time
     temperature=[]
@@ -188,8 +211,6 @@ def save_temp(time,temperature):
         temp_time.append([time,temperature])
         
     write_temp(t_count,temp_time)
-
-
 
 #turn buzzer on
 def trigger_buzzer(boolean):
