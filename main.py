@@ -40,39 +40,23 @@ eeprom = ES2EEPROMUtils.ES2EEPROM()
 #=======================================================================
 #Main method run on startup.
 def main():
-    global chan,start_stop, thread; #global variables used in the function
-    chan = setup();
-    while True:
-        print("1) Start environment monitoring.\n2) View EEPROM.")
-        option = input("Choose an option from above:\n")
-        if option == "1":
-            print("Runtime\t\t\tTime\t\tTemp Reading");
-            start_stop=1;
-            get_time_thread(); #Start timer and reading function
-            try:
-                while True: #loop infinitely so thread can run and print ADC values to display. Note: timer does printing so ADC is only read and printed to display each timestep.
-                    pass
-            except KeyboardInterrupt:
-                print("Monitoring stopped.")
-                thread.cancel()
-                start_stop = 0;
-                trigger_buzzer(0)
-
-        elif option == "2":
-            arrResult = fetch_temp()
-            print(arrResult[1])
+    global chan, thread; #global variables used in the function
+    # chan = setup();
+    # get_time_thread(); #Start timer and reading function
+    # while True:
+    #     pass
+    eeprom.clear(4096)
+    
 
 #Function to setup GPIO, SPI connection and ADC.
 def setup():
     #ADC and Temp sensor setup
-    global start, chan
+    global chan, start, start_stop
     GPIO.setmode(GPIO.BCM)
     # create the spi bus
     spi = busio.SPI(clock=board.SCK, MISO=board.MISO, MOSI=board.MOSI)
-
     # create the cs (chip select)
     cs = digitalio.DigitalInOut(board.D5)
-
     # create the mcp object
     mcp = MCP.MCP3008(spi, cs);
     # create an analog input channel on pin 0
@@ -82,7 +66,7 @@ def setup():
     # Setup debouncing and callbacks
    # GPIO.add_event_detect(button_stop_start,GPIO.FALLING,callback=btn_startstop,bouncetime=300);
     start=time.time();
-
+    start_stop=1;
     #EEPROM setup
     # Setup PWM channels
     global k
@@ -115,19 +99,18 @@ def ADCToCelcius(ADCcode):
 #Function to read channel value from ADC and print to screen.
 def read(chan, runtime):
     global sampleNr, start_stop;
-    val = chan.value 
-    temp = round(ADCToCelcius(val),3)
     if(start_stop==1):
+        val = chan.value 
+        temp = int(ADCToCelcius(val))
         currentTime = datetime.datetime.now().time()
-        timeArr = [currentTime.hour, currentTime.minute, currentTime.second]
+        timeArr = [int(currentTime.hour), int(currentTime.minute), int(currentTime.second)]
         save_temp(timeArr, temp)
         if timeArr[2] < 10: #Format 1 to 01.
             timeArr[2] = "0"+str(timeArr[2])
+        print(timeArr[0],":", timeArr[1],":", timeArr[2], "\t\t", runtime, '\t\t', str(temp) + " C", sep = '')
         
-        if (start_stop==1):
-            print(timeArr[0],":", timeArr[1],":", timeArr[2], "\t\t", runtime, '\t\t', str(temp) + " C", sep = '')
-            sampleNr += 1
-        if (sampleNr % 5 == 0):
+        sampleNr += 1
+        if (sampleNr % 5 == 0 and start_stop ==1):
             trigger_buzzer(1)
         else:
             trigger_buzzer(0)
@@ -171,7 +154,6 @@ def welcome():
 def fetch_temp():
     # get however many temp there are
     temp_count = eeprom.read_byte(0)
-    print(temp_count)
     tempscores=eeprom.read_block(1,temp_count*4)
     # Get the temperatures and time
     temperature=[]
@@ -196,18 +178,19 @@ def write_temp(t_count,temp_readings):
         data_to_write.append(reading[0][0]) #hour
         data_to_write.append(reading[0][1]) #minute
         data_to_write.append(reading[0][2]) #second 
-        data_to_write.append(int(reading[1])) #temperature
-    eeprom.write_block(1, data_to_write)
+        data_to_write.append(reading[1]) #temperature
+    eeprom.write_block(1, data_to_write) #(hour, minute, second, temp, hour, minute, second ,temp)
 
 # Save temperature
 def save_temp(time,temperature):
     # fetch temp            time is an array [hour,minute,second]
-    t_count, temp_time=fetch_temp()
+    t_count, temp_time = fetch_temp()
+    print(temp_time)
     if (t_count==20):
         temp_time.pop(0)
         temp_time.append([time,temperature])
     else:
-        t_count=t_count+1
+        t_count+=1
         temp_time.append([time,temperature])
         
     write_temp(t_count,temp_time)
