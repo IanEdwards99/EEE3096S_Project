@@ -50,7 +50,6 @@ def main():
     while True: # Loop infinitely allowing for continuous logging.
         pass
 
-
 #Function to setup GPIO, SPI connection and ADC.
 def setup():
     #ADC and Temp sensor setup
@@ -96,13 +95,16 @@ def read(chan):
         pTime = format_time(currTime) #Format time for printing.
         store_temps(temp, currTime) #Call method to store temperature and time value in EEPROM.
         runtime = int(time.time() - start)
-        print(pTime, "\t\t", runtime, '\t\t', str(temp) + " C", sep = '')
+        print(pTime, "\t\t", runtime, '\t\t', str(temp) + " C", sep = '', end = '')
         
         sampleNr += 1
         if (sampleNr % 5 == 0 and start_stop ==1): # If it has been 5 samples, trigger the buzzer only if the button has not been toggled.
             trigger_buzzer(1)
+            print('*')
         else:
             trigger_buzzer(0)
+            print()
+        
     else:
         sampleNr=0;
 
@@ -129,7 +131,7 @@ def store_temps(temp, currTime):
     eeprom.write_block(0, data_to_write) #Write array to EEPROM
 
 def print_temps(): #Function to retrieve and print first 20 contents of EEPROM.
-    samples = get_data()
+    samples = retrieve_temps()
     print("Number of samples stored: ", samples[0])
     print("Samples:\n", samples[1])
     
@@ -164,7 +166,7 @@ def btn_startstop(channel):#Stops/Starts sensor monitoring, but thread is unaffe
         sampleNr = 0; #Reset sampleNr so buzzer will buzz in next 5 samples time.
         trigger_buzzer(0); #Turn off buzzer.
         welcome() #Redisplay (clear screen)
-        print("Logging has stopped. Press Buzzer to start logging again.");
+        print("Logging has stopped. Press button to start logging again.");
     else: #Press again to start again.
         sampleNr = 0;
         trigger_buzzer(0);
@@ -198,6 +200,7 @@ if __name__ == "__main__": #If run as the main script, run main()
         welcome()
         main()
     except KeyboardInterrupt as e:
+        print_temps()
         GPIO.cleanup() #Cleanup GPIO initializations on exit.
         print(e)
     except Exception as e:
